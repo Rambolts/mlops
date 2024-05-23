@@ -1,7 +1,9 @@
+
 import os
 import random
 
 import mlflow
+import dagshub
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -9,6 +11,7 @@ from keras.layers import Dense, InputLayer
 from keras.models import Sequential
 from sklearn import preprocessing
 from sklearn.model_selection import train_test_split
+from dotenv import load_dotenv, find_dotenv
 
 
 def reset_seeds():
@@ -23,7 +26,6 @@ def reset_seeds():
     np.random.seed(42)
     random.seed(42)
 
-
 def read_data():
     """
     Reads the data from a CSV file and returns the feature matrix X and target vector y.
@@ -37,7 +39,6 @@ def read_data():
     X = data.drop(["fetal_health"], axis=1)
     y = data["fetal_health"]
     return X, y
-
 
 def process_data(X, y):
     """
@@ -68,7 +69,6 @@ def process_data(X, y):
     y_test = y_test - 1
     return X_train, X_test, y_train, y_test
 
-
 def create_model(X):
     """
     Creates a neural network model for classification based on the given input data.
@@ -82,7 +82,7 @@ def create_model(X):
     """
     reset_seeds()
     model = Sequential()
-    model.add(InputLayer(input_shape=(X.shape[1],)))
+    model.add(InputLayer(shape=(X.shape[1],)))
     model.add(Dense(10, activation='relu'))
     model.add(Dense(10, activation='relu'))
     model.add(Dense(3, activation='softmax'))
@@ -92,7 +92,6 @@ def create_model(X):
                   metrics=['accuracy'])
     return model
 
-
 def config_mlflow():
     """
     Configures the MLflow settings for tracking experiments.
@@ -100,21 +99,20 @@ def config_mlflow():
     Sets the MLFLOW_TRACKING_USERNAME and MLFLOW_TRACKING_PASSWORD environment
      variables to provide authentication for accessing the MLflow tracking server.
 
-    Sets the MLflow tracking URI to 'https://dagshub.com/renansantosmendes/mlops-ead.mlflow'
+    Sets the MLflow tracking URI to 'https://dagshub.com/{{username}}/{{repository}}'
     to specify the location where the experiment data will be logged.
 
     Enables autologging of TensorFlow models by calling `mlflow.tensorflow.autolog()`.
     This will automatically log the TensorFlow models, input examples, and model signatures
     during training.
     """
-    os.environ['MLFLOW_TRACKING_USERNAME'] = 'Rambolts'
-    os.environ['MLFLOW_TRACKING_PASSWORD'] = '11b51e19b28bb2b2f950557a91c03d25b54e3e7c'
+    #os.environ['MLFLOW_TRACKING_USERNAME'] = ''
+    #os.environ['MLFLOW_TRACKING_PASSWORD'] = ''
     mlflow.set_tracking_uri('https://dagshub.com/Rambolts/mlops-fetal-health.mlflow')
 
     mlflow.tensorflow.autolog(log_models=True,
                               log_input_examples=True,
                               log_model_signatures=True)
-
 
 def train_model(model, X_train, y_train, is_train=True):
     """
@@ -131,20 +129,32 @@ def train_model(model, X_train, y_train, is_train=True):
     Returns:
     None
     """
+    dagshub.init(
+        repo_name  = os.environ['DAGSHUB_REPO_NAME'], 
+        repo_owner = os.environ['DAGSHUB_USERNAME'], 
+        url  = os.environ['DAGSHUB_REPO_URL'],
+        root = '.')
+    
     with mlflow.start_run(run_name='experiment_mlops_ead') as run:
         model.fit(X_train,
                   y_train,
                   epochs=50,
                   validation_split=0.2,
                   verbose=3)
+    
     if is_train:
         run_uri = f'runs:/{run.info.run_id}'
         mlflow.register_model(run_uri, 'fetal_health')
-
+        
+    dagshub.end()
 
 if __name__ == "__main__":
+    _ = load_dotenv(find_dotenv())
+    
     X, y = read_data()
     X_train, X_test, y_train, y_test = process_data(X, y)
     model = create_model(X)
     config_mlflow()
+    
     train_model(model, X_train, y_train)
+

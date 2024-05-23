@@ -70,5 +70,6 @@ def test_train_model(sample_data):
     y = sample_data['fetal_health'] - 1
     model = create_model(X)
     train_model(model, X, y, is_train=False)
+    print(model.history.history['loss'][-1])
     assert model.history.history['loss'][-1] > 0
     assert model.history.history['val_loss'][-1] > 0
